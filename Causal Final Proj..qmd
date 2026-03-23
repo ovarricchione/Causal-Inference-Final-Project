@@ -1,0 +1,247 @@
+---
+title: "Merging Data"
+format: html
+---
+
+```{r Load Packages}
+library(haven)
+library(tidyverse)
+```
+
+```{r 2017 Prep}
+# Your ZIP file path
+zip_path <- "/Users/oliviavarricchione/Downloads/LLCP2017XPT.zip"
+# Create a temporary folder to extract the XPT
+tmp <- tempdir()
+# Extract the XPT file from the ZIP into the temporary folder
+xpt_file <- unzip(zip_path, files = "LLCP2017.XPT ", exdir = tmp)
+# Read the SAS transport file into R
+brfss2017 <- read_xpt(xpt_file)
+#Select variables of interest
+brfss2017 <- brfss2017 |> select(MENTHLTH, SEX, `_RACE`, INCOME2, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`)
+#Add year variable
+brfss2017 <- brfss2017 |> mutate(Year = 2017)
+head(brfss2017)
+```
+
+```{r 2018 Prep}
+zip_path <- "/Users/oliviavarricchione/Downloads/LLCP2018XPT.zip"
+tmp <- tempdir()
+xpt_file <- unzip(zip_path, files = "LLCP2018.XPT ", exdir = tmp)
+brfss2018 <- read_xpt(xpt_file)
+brfss2018 <- brfss2018 |> select(MENTHLTH, SEX1, `_RACE`, INCOME2, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`)
+#To keep consistency for merging, change SEX1 to SEX to match 2017
+brfss2018 <- rename(brfss2018, SEX = SEX1)
+#Add year variable
+brfss2018 <- brfss2018 |> mutate(Year = 2018)
+head(brfss2018)
+```
+
+```{r 2019 Prep}
+zip_path <- "/Users/oliviavarricchione/Downloads/LLCP2019XPT.zip"
+tmp <- tempdir()
+xpt_file <- unzip(zip_path, files = "LLCP2019.XPT ", exdir = tmp)
+brfss2019 <- read_xpt(xpt_file)
+brfss2019 <- brfss2019 |> select(MENTHLTH, SEXVAR, `_RACE`, INCOME2, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`)
+#To keep consistency for merging, change SEXVAR to SEX to match 2017 and 2018
+brfss2019 <- rename(brfss2019, SEX = SEXVAR)
+#Add year variable
+brfss2019 <- brfss2019 |> mutate(Year = 2019)
+head(brfss2019)
+```
+
+```{r 2020 Prep}
+zip_path <- "/Users/oliviavarricchione/Downloads/LLCP2020XPT.zip"
+tmp <- tempdir()
+xpt_file <- unzip(zip_path, files = "LLCP2020.XPT ", exdir = tmp)
+brfss2020 <- read_xpt(xpt_file)
+brfss2020 <- brfss2020 |> select(MENTHLTH, SEXVAR, `_RACE`, INCOME2, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`)
+#To keep consistency for merging, change SEXVAR to SEX to match 2017 and 2018
+brfss2020 <- rename(brfss2020, SEX = SEXVAR)
+#Add year variable
+brfss2020 <- brfss2020 |> mutate(Year = 2020)
+head(brfss2020)
+```
+
+```{r 2021 Prep}
+zip_path <- "/Users/oliviavarricchione/Downloads/LLCP2021XPT.zip"
+tmp <- tempdir()
+xpt_file <- unzip(zip_path, files = "LLCP2021.XPT ", exdir = tmp)
+brfss2021 <- read_xpt(xpt_file)
+brfss2021 <- brfss2021 |> select(MENTHLTH, SEXVAR, `_RACE`, INCOME3, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`)
+#To keep consistency for merging, change SEXVAR to SEX to match 2017 and 2018
+brfss2021 <- rename(brfss2021, SEX = SEXVAR)
+#Also, recode INCOME3 to be consistent with INCOME2
+#8 = $75,000 or more in INCOME2, need to change levels 7, 8, 9, 10, and 11 to be $75,000 or more
+brfss2021 <- brfss2021 |> mutate(INCOME3 = as.factor(INCOME3)) |>
+  mutate(INCOME3 = case_when(INCOME3 %in% c("7", "8", "9", "10", "11") ~ "7",
+                                        .default = INCOME3)) |>
+  mutate(INCOME2 = as.double(INCOME3)) |>
+  select(!INCOME3)
+#Add year variable
+brfss2021 <- brfss2021 |> mutate(Year = 2021)
+head(brfss2021)
+```
+
+```{r 2022 Prep}
+zip_path <- "/Users/oliviavarricchione/Downloads/LLCP2022XPT.zip"
+tmp <- tempdir()
+xpt_file <- unzip(zip_path, files = "LLCP2022.XPT ", exdir = tmp)
+brfss2022 <- read_xpt(xpt_file)
+brfss2022 <- brfss2022 |> select(MENTHLTH, SEXVAR, `_RACE1`, INCOME3, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`)
+#To keep consistency for merging, change SEXVAR to SEX to match 2017 and 2018
+brfss2022 <- rename(brfss2022, SEX = SEXVAR)
+#Also change _RACE1 to _RACE
+brfss2022 <- rename(brfss2022, `_RACE` = `_RACE1`)
+#Also change INCOME3 to match INCOME2
+brfss2022 <- brfss2022 |> mutate(INCOME3 = as.factor(INCOME3)) |>
+  mutate(INCOME3 = case_when(INCOME3 %in% c("7", "8", "9", "10", "11") ~ "7",
+                                        .default = INCOME3)) |>
+  mutate(INCOME2 = as.double(INCOME3)) |>
+  select(!INCOME3)
+#Add year variable
+brfss2022 <- brfss2022 |> mutate(Year = 2022)
+head(brfss2022)
+```
+
+```{r Merge}
+df <- bind_rows(brfss2017, brfss2018, brfss2019, brfss2020, brfss2021, brfss2022)
+```
+
+```{r Relabel as needed}
+#Mental Health
+df <- df |> mutate(MENTHLTH = case_when(MENTHLTH == 88 ~ "None",
+                                        MENTHLTH == 77 ~ "Don't know/Not sure",
+                                        MENTHLTH == 99 ~ NA,
+                                        .default = as.character(MENTHLTH))) |> 
+  mutate(MENTHLTH = as.factor(MENTHLTH))
+#Sex
+df <- df |> mutate(SEX = case_when(SEX == 1 ~ "Male",
+                         SEX == 2 ~ "Female")) |>
+  mutate(SEX = as.factor(SEX))
+#Race
+df <- df |> mutate(`_RACE` = case_when(`_RACE` == 1 ~ "White",
+                           `_RACE` == 2 ~ "Black",
+                           `_RACE` == 3 ~ "American Indian/Alaskan Native",
+                           `_RACE` == 4 ~ "Asian",
+                           `_RACE` == 5 ~ "Native Hawaiian/Pacific Islander",
+                           `_RACE` == 6 ~ "Other",
+                           `_RACE` == 7 ~ "Multiracial",
+                           `_RACE` == 8 ~ "Hispanic")) |>
+  mutate(`_RACE` = as.factor(`_RACE`))
+#Income2
+df <- df |> mutate(INCOME2 = as.factor(INCOME2)) |>
+  mutate(INCOME2 = case_when(INCOME2 == 1 ~ "<$10,000",
+                             INCOME2 == 2 ~ "$10,000-$15,000",
+                             INCOME2 == 3 ~ "$15,000-$20,000",
+                             INCOME2 == 4 ~ "$20,000-$25,000",
+                             INCOME2 == 5 ~ "$25,000-$35,000",
+                             INCOME2 == 6 ~ "$35,000-$50,000",
+                             INCOME2 == 7 ~ "$50,000-$75,000",
+                             INCOME2 == 8 ~ "$75,000+")) |>
+  mutate(INCOME2 = as.factor(INCOME2))
+#Employ1
+df <- df |> mutate(EMPLOY1 = as.factor(EMPLOY1)) |>
+  mutate(EMPLOY1 = case_when(EMPLOY1 == 1 ~ "Employed",
+                             EMPLOY1 == 2 ~ "Self-employed",
+                             EMPLOY1 == 3 ~ "Out of work 1+ years",
+                             EMPLOY1 == 4 ~ "Out of work <1 year",
+                             EMPLOY1 == 5 ~ "Homemaker",
+                             EMPLOY1 == 6 ~ "Student",
+                             EMPLOY1 == 7 ~ "Retired",
+                             EMPLOY1 == 8 ~ "Unable to work")) |>
+  mutate(EMPLOY1 = as.factor(EMPLOY1))
+#General Health
+df <- df |> mutate(GENHLTH = as.factor(GENHLTH)) |>
+  mutate(GENHLTH = case_when(GENHLTH == 1 ~ "Excellent",
+                             GENHLTH == 2 ~ "Very good",
+                             GENHLTH == 3 ~ "Good",
+                             GENHLTH == 4 ~ "Fair",
+                             GENHLTH == 5 ~ "Poor")) |>
+   mutate(GENHLTH = as.factor(GENHLTH))
+#Age group
+df <- df |> mutate(`_AGEG5YR` = as.factor(`_AGEG5YR`)) |>
+  mutate(`_AGEG5YR` = case_when(`_AGEG5YR` == 1 ~ "18-24",
+                                `_AGEG5YR` == 2 ~ "25-29",
+                                `_AGEG5YR` == 3 ~ "30-34",
+                                `_AGEG5YR` == 4 ~ "35-39",
+                                `_AGEG5YR` == 5 ~ "40-44",
+                                `_AGEG5YR` == 6 ~ "45-49",
+                                `_AGEG5YR` == 7 ~ "50-54",
+                                `_AGEG5YR` == 8 ~ "55-59",
+                                `_AGEG5YR` == 9 ~ "60-64",
+                                `_AGEG5YR` == 10 ~ "65-69",
+                                `_AGEG5YR` == 11 ~ "70-74",
+                                `_AGEG5YR` == 12 ~ "75-79",
+                                `_AGEG5YR` == 13 ~ "80+")) |>
+  mutate(`_AGEG5YR` = as.factor(`_AGEG5YR`))
+#State
+df <- df |> mutate(`_STATE` = case_when(`_STATE` == 1 ~ "Alabama",
+                              `_STATE` == 2 ~ "Alaska",
+                              `_STATE` == 4 ~ "Arizona",
+                              `_STATE` == 5 ~ "Arkansas",
+                              `_STATE` == 6 ~ "California",
+                              `_STATE` == 8 ~ "Colorado",
+                              `_STATE` == 9 ~ "Connecticut",
+                              `_STATE` == 10 ~ "Delaware",
+                              `_STATE` == 11 ~ "District of Columbia",
+                              `_STATE` == 12 ~ "Florida",
+                              `_STATE` == 13 ~ "Georgia",
+                              `_STATE` == 15 ~ "Hawaii",
+                              `_STATE` == 16 ~ "Idaho",
+                              `_STATE` == 17 ~ "Illinois",
+                              `_STATE` == 18 ~ "Indiana",
+                              `_STATE` == 19 ~ "Iowa",
+                              `_STATE` == 20 ~ "Kansas",
+                              `_STATE` == 21 ~ "Kentucky",
+                              `_STATE` == 22 ~ "Louisiana",
+                              `_STATE` == 23 ~ "Maine",
+                              `_STATE` == 24 ~ "Maryland",
+                              `_STATE` == 25 ~ "Massachusetts",
+                              `_STATE` == 26 ~ "Michigan",
+                              `_STATE` == 27 ~ "Minnesota",
+                              `_STATE` == 28 ~ "Mississippi",
+                              `_STATE` == 29 ~ "Missouri",
+                              `_STATE` == 30 ~ "Montana",
+                              `_STATE` == 31 ~ "Nebraska",
+                              `_STATE` == 32 ~ "Nevada",
+                              `_STATE` == 33 ~ "New Hampshire",
+                              `_STATE` == 34 ~ "New Jersey",
+                              `_STATE` == 35 ~ "New Mexico",
+                              `_STATE` == 36 ~ "New York",
+                              `_STATE` == 37 ~ "North Carolina",
+                              `_STATE` == 38 ~ "North Dakota",
+                              `_STATE` == 39 ~ "Ohio",
+                              `_STATE` == 40 ~ "Oklahoma",
+                              `_STATE` == 41 ~ "Oregon",
+                              `_STATE` == 42 ~ "Pennsylvania",
+                              `_STATE` == 44 ~ "Rhode Island",
+                              `_STATE` == 45 ~ "South Carolina",
+                              `_STATE` == 46 ~ "South Dakota",
+                              `_STATE` == 47 ~ "Tennessee",
+                              `_STATE` == 48 ~ "Texas",
+                              `_STATE` == 49 ~ "Utah",
+                              `_STATE` == 50 ~ "Vermont",
+                              `_STATE` == 51 ~ "Virginia",
+                              `_STATE` == 53 ~ "Washington",
+                              `_STATE` == 54 ~ "West Virginia",
+                              `_STATE` == 55 ~ "Wisconsin",
+                              `_STATE` == 56 ~ "Wyoming",
+                              `_STATE` == 66 ~ "Guam",
+                              `_STATE` == 72 ~ "Puerto Rico")) |>
+  mutate(`_STATE` = as.factor(`_STATE`))
+#Year
+df <- df |> mutate(Year = as.factor(Year))
+#Make sure all variables are stored correctly
+summary(df)
+```
+
+```{r Missing Data}
+sum(!complete.cases(df)) / nrow(df) * 100
+#22.09% missing
+```
+
+```{r Data Structure}
+head(df)
+df |> summarize(.by = Year, count = n())
+```
