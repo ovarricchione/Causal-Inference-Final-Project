@@ -345,3 +345,47 @@ n_removed
 pct_removed <- (n_removed / n_original) * 100
 pct_removed
 ```
+
+
+```{r Hand Annotate Political Leaning}
+
+# create a dataset with state political leaning (based on 2020 election)
+political_data <- data.frame(
+  # list of U.S. states
+  state = c("Alabama", "Alaska", "Arizona", "Arkansas", "California",
+                 "Colorado", "Connecticut", "Delaware", "Florida", "Georgia",
+                 "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas",
+                 "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts",
+                 "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana",
+                 "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+                 "New Mexico", "New York", "North Carolina", "North Dakota",
+                 "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island",
+                 "South Carolina", "South Dakota", "Tennessee", "Texas",
+                 "Utah", "Vermont", "Virginia", "Washington", "Washington DC",
+                 "West Virginia", "Wisconsin", "Wyoming"),
+  # assign political party based on 2020 election results
+  political_leaning = c(
+    "Republican", "Republican", "Democrat", "Republican", "Democrat",
+    "Democrat", "Democrat", "Democrat", "Republican", "Democrat",
+    "Democrat", "Republican", "Democrat", "Republican", "Republican",
+    "Republican", "Republican", "Republican", "Democrat", "Democrat",
+    "Democrat", "Democrat", "Democrat", "Republican", "Republican",
+    "Republican", "Republican", "Democrat", "Democrat", "Democrat",
+    "Democrat", "Democrat", "Republican", "Republican", "Republican",
+    "Republican", "Democrat", "Democrat", "Democrat", "Republican",
+    "Republican", "Republican", "Republican", "Republican", "Democrat",
+    "Democrat", "Democrat", "Democrat", "Republican", "Democrat",
+    "Republican"
+  ))
+
+
+# rename Washington DC to match naming used in the main dataset
+political_data$state[political_data$state == "Washington DC"] <- "District of Columbia"
+
+
+# merge political leaning into main dataset by matching state names
+df_cc <- df_cc |> left_join(political_data, by = c(`_STATE` = "state"))
+
+# check the structure of the dataset to confirm the new variable was added
+glimpse(df_cc)
+```
