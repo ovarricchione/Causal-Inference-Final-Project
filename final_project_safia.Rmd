@@ -344,6 +344,17 @@ n_removed
 # calculate percentage of observations removed due to missing data
 pct_removed <- (n_removed / n_original) * 100
 pct_removed
+
+#Check that year distribution didn't change much with complete cases
+before <- df |> summarize(.by = Year, count_before = n()) |>
+  ungroup() |>
+  mutate(percent_before = count_before / sum(count_before) * 100)
+after <- df_cc |> summarize(.by = Year, count_after = n()) |>
+  ungroup() |>
+  mutate(percent_after = count_after / sum(count_after) * 100)
+merge(before, after, .by = Year) |>
+  mutate(percent_difference = abs(1 - (percent_after / percent_before)) * 100)
+#some changes, but nothing drastic. All less than 5% different distribution and sufficient counts after to continue forward with the analysis
 ```
 
 
@@ -389,3 +400,52 @@ df_cc <- df_cc |> left_join(political_data, by = c(`_STATE` = "state"))
 # check the structure of the dataset to confirm the new variable was added
 glimpse(df_cc)
 ```
+
+```{r Hand Annotate COVID Policy Strictness}
+covid <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-dataset/main/data/OxCGRT_compact_subnational_v1.csv")
+#Only USA
+covid <- covid |> filter(CountryName == "United States")
+#Only state-specific
+covid <- covid |> filter(RegionName %in% c("Alabama", "Alaska", "Arizona", "Arkansas",
+                                  "California", "Colorado", "Connecticut", "Delaware",
+                                  "Florida", "Georgia", "Hawaii", "Idaho", "Illinois",
+                                  "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana",
+                                  "Maine", "Maryland", "Massachusetts", "Michigan",
+                                  "Minnesota", "Mississippi", "Missouri", "Montana",
+                                  "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+                                  "New Mexico", "New York", "North Carolina", 
+                                  "North Dakota", "Ohio", "Oklahoma", "Oregon",
+                                  "Pennsylvania", "Rhode Island", "South Carolina",
+                                  "South Dakota", "Tennessee", "Texas", "Utah",
+                                  "Vermont", "Virginia", "Washington", "Washington DC",
+                                  "West Virginia", "Wisconsin", "Wyoming"))
+#Get average stringency per year per state
+annual <- covid |> mutate(year = as.numeric(substr(as.character(Date), 1, 4))) |>
+  filter(year %in% c(2020, 2021, 2022)) |>
+  group_by(RegionName) |>
+  summarize(avg_stringency = mean(StringencyIndex_Average)) |>
+  rename(state = RegionName) |>
+  mutate(state = ifelse(state == "Washington DC", "District of Columbia", state)) |>
+  mutate(state = as.factor(state))
+
+#Main method
+med <- median(annual$avg_stringency)
+annual <- annual |> mutate(main_treatment = ifelse(avg_stringency > med, "Strict",
+                                                   "Not Strict"))
+#Alternative #1
+q25 <- quantile(annual$avg_stringency, 0.25)
+annual <- annual |> mutate(alt_treatment1 = ifelse(avg_stringency > q25, "Strict",
+                                                   "Not Strict"))
+
+#Alternative #2
+q75 <- quantile(annual$avg_stringency, 0.75)
+annual <- annual |> mutate(alt_treatment2 = ifelse(avg_stringency > q75, "Strict",
+                                                   "Not Strict"))
+
+#Select just the classification variables
+annual <- annual |> dplyr::select(!avg_stringency)
+
+#Add these values to the data set:
+df_cc <- df_cc |> left_join(annual, by = c(`_STATE` = "state"))
+```
+
