@@ -1,6 +1,6 @@
 ---
 title: "Casual Inference Final Project"
-author: "Safia Muftic"
+author: "Safia Muftic, Olivia Varricchione, and Surbhi Nahata"
 date: "2026-03-26"
 output: html_document
 ---
@@ -16,6 +16,7 @@ library(tidyverse)
 library(haven)
 library(dplyr)
 library(tidyr)
+library(broom)
 ```
 
 ```{r 2017 Prep}
@@ -305,59 +306,6 @@ head(df)
 df |> summarize(.by = Year, count = n())
 ```
 
-
-```{r Missingness Summary}
-# calculate number and percentage of missing values for each variable
-df |> 
-  summarise(across(everything(), 
-                   list(
-                     missing_n = ~sum(is.na(.)),
-                     missing_pct = ~mean(is.na(.)) * 100
-                   ))) |> 
-  pivot_longer(
-    cols = everything(),
-    names_to = c("variable", ".value"),
-    names_sep = "_missing_"
-  ) |> 
-  mutate(pct = round(pct, 2)) |> 
-  arrange(desc(pct))
-```
-
-
-```{r Handle Missing Values}
-# remove observations with any missing values in the variables of interest
-df_cc <- df %>%
-  drop_na(MENTHLTH, SEX, `_RACE`, INCOME2, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`, Year)
-
-# check that no missing values remain in the cleaned dataset
-df_cc %>% summarise(across(everything(), ~sum(is.na(.))))
-
-# get number of observations after removing missing data
-n_complete <- nrow(df_cc)
-
-n_complete
-
-# calculate how many observations were removed
-n_removed <- n_original - n_complete
-n_removed
-
-# calculate percentage of observations removed due to missing data
-pct_removed <- (n_removed / n_original) * 100
-pct_removed
-
-#Check that year distribution didn't change much with complete cases
-before <- df |> summarize(.by = Year, count_before = n()) |>
-  ungroup() |>
-  mutate(percent_before = count_before / sum(count_before) * 100)
-after <- df_cc |> summarize(.by = Year, count_after = n()) |>
-  ungroup() |>
-  mutate(percent_after = count_after / sum(count_after) * 100)
-merge(before, after, .by = Year) |>
-  mutate(percent_difference = abs(1 - (percent_after / percent_before)) * 100)
-#some changes, but nothing drastic. All less than 5% different distribution and sufficient counts after to continue forward with the analysis
-```
-
-
 ```{r Hand Annotate Political Leaning}
 
 # create a dataset with state political leaning (based on 2020 election)
@@ -395,10 +343,10 @@ political_data$state[political_data$state == "Washington DC"] <- "District of Co
 
 
 # merge political leaning into main dataset by matching state names
-df_cc <- df_cc |> left_join(political_data, by = c(`_STATE` = "state"))
+df <- df |> left_join(political_data, by = c(`_STATE` = "state"))
 
 # check the structure of the dataset to confirm the new variable was added
-glimpse(df_cc)
+glimpse(df)
 ```
 
 ```{r Hand Annotate COVID Policy Strictness}
@@ -446,6 +394,448 @@ annual <- annual |> mutate(alt_treatment2 = ifelse(avg_stringency > q75, "Strict
 annual <- annual |> dplyr::select(!avg_stringency)
 
 #Add these values to the data set:
-df_cc <- df_cc |> left_join(annual, by = c(`_STATE` = "state"))
+df <- df |> left_join(annual, by = c(`_STATE` = "state"))
 ```
 
+```{r Missingness Summary}
+# calculate number and percentage of missing values for each variable
+df |> 
+  summarise(across(everything(), 
+                   list(
+                     missing_n = ~sum(is.na(.)),
+                     missing_pct = ~mean(is.na(.)) * 100
+                   ))) |> 
+  pivot_longer(
+    cols = everything(),
+    names_to = c("variable", ".value"),
+    names_sep = "_missing_"
+  ) |> 
+  mutate(pct = round(pct, 2)) |> 
+  arrange(desc(pct))
+```
+
+
+```{r Missing Data Patterns}
+# Check whether missing income is related to other variables
+result <- df %>%
+  mutate(missing_income = is.na(INCOME2)) %>%
+  group_by(missing_income) %>%
+  summarise(
+    n = n(),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_strict_main=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict_main=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_poor = mean(GENHLTH == "Poor", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    .groups = "drop"
+  )
+
+print(result, width = Inf)
+
+# Check whether missing mental health is related to other variables
+result2 <- df %>%
+  mutate(missing_menthlth = is.na(MENTHLTH)) %>%
+  group_by(missing_menthlth) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    .groups = "drop"
+  )
+
+print(result2, width = Inf)
+
+# Check whether missing main treatment is related to other variables
+result3 <- df %>%
+  mutate(missing_treatment = is.na(main_treatment)) %>%
+  group_by(missing_treatment) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_poor = mean(GENHLTH == "Poor", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(result3, width = Inf)
+
+# Check whether missing race is related to other variables
+result4 <- df %>%
+  mutate(missing_race = is.na(`_RACE`)) %>%
+  group_by(missing_race) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_poor = mean(GENHLTH == "Poor", na.rm = TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(result4, width = Inf)
+
+# Check whether missing race is related to other variables
+result5 <- df %>%
+  mutate(missing_age = is.na(`_AGEG5YR`)) %>%
+  group_by(missing_age) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_poor = mean(GENHLTH == "Poor", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(result5, width = Inf)
+
+# Check whether missing general health is related to other variables
+result6 <- df %>%
+  mutate(missing_genhlth = is.na(GENHLTH)) %>%
+  group_by(missing_genhlth) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(result6, width = Inf)
+
+# Check whether missing employment status is related to other variables
+result7 <- df %>%
+  mutate(missing_employ = is.na(EMPLOY1)) %>%
+  group_by(missing_employ) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_poor = mean(GENHLTH == "Poor", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    .groups = "drop"
+  )
+print(result7, width = Inf)
+
+
+# Check whether missing political leaning is related to other variables
+result8<- df %>%
+  mutate(missing_political_leaning = is.na(political_leaning)) %>%
+  group_by(missing_political_leaning) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(result8, width = Inf)
+
+
+# Check whether missing alternative treatment 1 is related to other variables
+result9<- df %>%
+  mutate(missing_alt_treatment1 = is.na(alt_treatment1)) %>%
+  group_by(missing_alt_treatment1) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
+    prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    .groups = "drop"
+  )
+
+print(result9, width = Inf)
+
+# Check whether missing alternative treatment 2 is related to other variables
+result10<- df %>%
+  mutate(missing_alt_treatment2 = is.na(alt_treatment2)) %>%
+  group_by(missing_alt_treatment2) %>%
+  summarise(
+    n = n(),
+    mean_income = mean(as.numeric(INCOME2), na.rm = TRUE),
+    mean_menthlth = mean(MENTHLTH, na.rm = TRUE),
+    prop_male = mean(SEX == "Male", na.rm = TRUE),
+    prop_female = mean(SEX == "Female", na.rm = TRUE),
+    mean_age_group = mean(as.numeric(`_AGEG5YR`), na.rm = TRUE),
+    mean_year=mean(as.numeric(Year), na.rm=TRUE),
+    mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
+    mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
+    prop_excellent = mean(GENHLTH == "Excellent", na.rm = TRUE),
+    prop_verygood = mean(GENHLTH == "Very good", na.rm = TRUE),
+    prop_good = mean(GENHLTH == "Good", na.rm = TRUE),
+    prop_fair = mean(GENHLTH == "Fair", na.rm = TRUE),
+    prop_white = mean(`_RACE` == "White", na.rm = TRUE),
+    prop_black = mean(`_RACE` == "Black", na.rm = TRUE),
+    prop_hispanic = mean(`_RACE` == "Hispanic", na.rm = TRUE),
+    prop_asian = mean(`_RACE` == "Asian", na.rm = TRUE),
+    prop_multiracial = mean(`_RACE` == "Multiracial", na.rm = TRUE),
+    prop_race_other = mean(`_RACE` == "Other", na.rm = TRUE),
+    prop_employed=mean(EMPLOY1 == "Employed", na.rm=TRUE),
+    prop_retired=mean(EMPLOY1 == "Retired", na.rm=TRUE),
+    prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
+    prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
+    prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
+    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
+    prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
+    prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
+    prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
+    .groups = "drop"
+  )
+
+print(result10, width = Inf)
+```
+
+
+```{r Handle Missing Values}
+# remove observations with any missing values in the variables of interest
+df_cc <- df %>%
+  drop_na(MENTHLTH, SEX, `_RACE`, INCOME2, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`, Year, political_leaning, main_treatment)
+
+# check that no missing values remain in the cleaned dataset
+df_cc %>% summarise(across(everything(), ~sum(is.na(.))))
+
+# get number of observations after removing missing data
+n_complete <- nrow(df_cc)
+
+n_complete
+
+# calculate how many observations were removed
+n_removed <- n_original - n_complete
+n_removed
+
+# calculate percentage of observations removed due to missing data
+pct_removed <- (n_removed / n_original) * 100
+pct_removed
+
+#Check that year distribution didn't change much with complete cases
+before <- df |> summarize(.by = Year, count_before = n()) |>
+  ungroup() |>
+  mutate(percent_before = count_before / sum(count_before) * 100)
+after <- df_cc |> summarize(.by = Year, count_after = n()) |>
+  ungroup() |>
+  mutate(percent_after = count_after / sum(count_after) * 100)
+merge(before, after, .by = Year) |>
+  mutate(percent_difference = abs(1 - (percent_after / percent_before)) * 100)
+#some changes, but nothing drastic. All less than 5% different distribution and sufficient counts after to continue forward with the analysis
+```
