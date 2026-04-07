@@ -398,9 +398,13 @@ df <- df |> left_join(annual, by = c(`_STATE` = "state"))
 ```
 
 ```{r severity data}
-severity_summary <- oxcgrt_data %>%
-  group_by(state_code) %>%
-  summarize(avg_deaths = mean(ConfirmedDeaths, na.rm = TRUE))
+severity_summary <- covid %>%
+  mutate(year = as.numeric(substr(as.character(Date), 1, 4))) %>%
+  filter(year %in% c(2020, 2021, 2022)) %>%
+  group_by(RegionName) %>%
+  summarize(avg_deaths = mean(ConfirmedDeaths, na.rm = TRUE)) %>%
+  rename(state = RegionName) %>%
+  mutate(state = ifelse(state == "Washington DC", "District of Columbia", state))
 
 # Define Cutoff Points (Quantiles)
 q1 <- quantile(severity_summary$avg_deaths, 0.25)
@@ -412,17 +416,17 @@ severity_summary <- severity_summary %>%
   mutate(
     # Main Categorization (High/Low based on Median)
     covid_severity = ifelse(avg_deaths >= q2, "High", "Low"),
-    
     # Robustness Check: High (Comparing Top 25% to Bottom 75%)
     covid_severity_robust_high = ifelse(avg_deaths >= q3, "High", "Low"),
-    
     # Robustness Check: Low (Comparing Bottom 25% to Top 75%)
     covid_severity_robust_low = ifelse(avg_deaths <= q1, "High", "Low")
   )
 
-# Join back to the main BRFSS dataset
-final_data <- brfss_merged %>%
-  left_join(severity_summary, by = "state_code")
+#Merge Severity into 'annual' dataframe
+annual <- annual %>%
+  left_join(severity_summary, by = "state")
+
+df <- df |> left_join(annual, by = c(`_STATE` = "state"))
 ```
 
 ```{r Missingness Summary}
