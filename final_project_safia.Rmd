@@ -12,11 +12,18 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 
+# load tidyverse package for data manipulation and visualization
 library(tidyverse)
-library(haven)
+# load haven package to read SAS transport files (.XPT)
+library(haven) 
+# load dplyr package for data wrangling (filter, mutate, summarize)
 library(dplyr)
-library(tidyr)
-library(broom)
+# load tidyr package for data reshaping (pivoting)
+library(tidyr) 
+# load broom package for tidy model outputs
+library(broom)  
+# load did package for  difference-in-differences analysis (Callaway and Sant’Anna)
+library(did)        
 ```
 
 ```{r 2017 Prep}
@@ -349,8 +356,9 @@ df <- df |> left_join(political_data, by = c(`_STATE` = "state"))
 glimpse(df)
 ```
 
+
 ```{r Hand Annotate COVID Policy Strictness}
-covid <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-dataset/main/data/OxCGRT_compact_subnational_v1.csv")
+covid <- read.csv("OxCGRT_compact_subnational_v1.csv")
 #Only USA
 covid <- covid |> filter(CountryName == "United States")
 #Only state-specific
@@ -449,7 +457,7 @@ result <- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
     prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
     .groups = "drop"
@@ -489,7 +497,7 @@ result2 <- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
     prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
     .groups = "drop"
@@ -525,7 +533,7 @@ result3 <- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
     prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
     prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
@@ -561,7 +569,7 @@ result4 <- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
     prop_republican=mean(political_leaning == "Republican", na.rm=TRUE),
     prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
@@ -600,7 +608,7 @@ result5 <- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
     mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
@@ -637,7 +645,7 @@ result6 <- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     mean_strict=mean(main_treatment=="Strict", na.rm=TRUE),
     mean_not_strict=mean(main_treatment=="Not Strict", na.rm=TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
@@ -716,7 +724,7 @@ result8<- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
     prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
     prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
@@ -756,7 +764,7 @@ result9<- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     prop_alt2_strict = mean(alt_treatment2 == "Strict", na.rm = TRUE),
     prop_alt2_not_strict = mean(alt_treatment2 == "Not Strict", na.rm = TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
@@ -795,7 +803,7 @@ result10<- df %>%
     prop_self_employed=mean(EMPLOY1 == "Self-employed", na.rm=TRUE),
     prop_unable=mean(EMPLOY1 == "Unable to work", na.rm=TRUE),
     prop_homemaker=mean(EMPLOY1 == "Homemaker", na.rm=TRUE),
-    prop_employ_other=mean(EMPLOY1 == "Other", na.rm=TRUE),
+    prop_student=mean(EMPLOY1 == "Student", na.rm=TRUE),
     prop_alt1_strict = mean(alt_treatment1 == "Strict", na.rm = TRUE),
     prop_alt1_not_strict = mean(alt_treatment1 == "Not Strict", na.rm = TRUE),
     prop_democrat=mean(political_leaning == "Democrat", na.rm=TRUE),
@@ -838,4 +846,55 @@ after <- df_cc |> summarize(.by = Year, count_after = n()) |>
 merge(before, after, .by = Year) |>
   mutate(percent_difference = abs(1 - (percent_after / percent_before)) * 100)
 #some changes, but nothing drastic. All less than 5% different distribution and sufficient counts after to continue forward with the analysis
+```
+
+```{r DID Model for alt treatment 1 (test run)}
+
+# Create variables needed for DID
+df_cc <- df_cc %>%
+  mutate(id=row_number()) %>%
+  mutate(
+    Year_num = as.numeric(Year),
+    mutate(case.when (Year == 1 ~ 2017,
+           Year == 2 ~ 2018, 
+           Year == 3 ~ 2019,
+           Year == 4 ~ 2020,
+           Year == 5 ~ 2021,
+           Year == 6 ~ 2022))  %>%
+    treat_alt1 = ifelse(alt_treatment1 == "Strict", 1, 0),
+    G_alt1 = ifelse(treat_alt1 == 1, 2020, 0),
+  )
+
+
+# Take a random subset to test the model first (faster to run)
+df_test <- df_cc %>% sample_n(100000)
+
+# Run the DID model using Callaway and Sant’Anna method
+did_model_alt1 <- att_gt(
+  yname = "MENTHLTH",
+  tname = "Year_num",
+  idname = "id",
+  gname = "G_alt1",
+  data = df_test,
+  control_group = "nevertreated",
+  est_method = "dr",
+  xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + political_leaning,
+  panel = FALSE
+)
+
+# Compute overall average treatment effect
+agg_simple_alt1 <- aggte(did_model_alt1, type = "simple")
+
+# display overall ATT results
+summary(agg_simple_alt1)  
+
+# Compute dynamic (event study) effects over time
+agg_dynamic_alt1 <- aggte(did_model_alt1, type = "dynamic")
+
+# shows treatment effects for each time period relative to treatment
+summary(agg_dynamic_alt1)
+
+# Plot dynamic effects to check parallel trends and treatment effects over time
+ggdid(agg_dynamic_alt1)
+
 ```
