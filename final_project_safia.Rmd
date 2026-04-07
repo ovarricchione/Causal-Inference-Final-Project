@@ -25,7 +25,7 @@ zip_path1 <- "LLCP2017XPT.zip"
 # Create a temporary folder to extract the XPT
 tmp <- tempdir()
 # Extract the XPT file from the ZIP into the temporary folder
-xpt_file <- unzip(zip_path1, files = "LLCP2017.XPT", exdir = tmp)
+xpt_file <- unzip(zip_path1, files = "LLCP2017.XPT ", exdir = tmp)
 # Read the SAS transport file into R
 brfss2017 <- read_xpt(xpt_file)
 #Select variables of interest
@@ -42,7 +42,7 @@ zip_path2 <- "LLCP2018XPT.zip"
 # Create a temporary folder to extract the XPT
 tmp <- tempdir()
 # Extract the XPT file from the ZIP into the temporary folder
-xpt_file <- unzip(zip_path2, files = "LLCP2018.XPT", exdir = tmp)
+xpt_file <- unzip(zip_path2, files = "LLCP2018.XPT ", exdir = tmp)
 # Read the SAS transport file into R
 brfss2018 <- read_xpt(xpt_file)
 # select variables
