@@ -12,18 +12,20 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 
-# load tidyverse package for data manipulation and visualization
+# load tidyverse package 
 library(tidyverse)
-# load haven package to read SAS transport files (.XPT)
+# load haven package 
 library(haven) 
-# load dplyr package for data wrangling (filter, mutate, summarize)
+# load dplyr package 
 library(dplyr)
-# load tidyr package for data reshaping (pivoting)
+# load tidyr package 
 library(tidyr) 
-# load broom package for tidy model outputs
+# load broom package 
 library(broom)  
 # load did package for  difference-in-differences analysis (Callaway and Sant’Anna)
-library(did)        
+library(did)
+# load gtsummary package
+library(gtsummary)
 ```
 
 ```{r 2017 Prep}
@@ -314,7 +316,6 @@ df |> summarize(.by = Year, count = n())
 ```
 
 ```{r Hand Annotate Political Leaning}
-
 # create a dataset with state political leaning (based on 2020 election)
 political_data <- data.frame(
   # list of U.S. states
@@ -356,9 +357,8 @@ df <- df |> left_join(political_data, by = c(`_STATE` = "state"))
 glimpse(df)
 ```
 
-
 ```{r Hand Annotate COVID Policy Strictness}
-covid <- read.csv("OxCGRT_compact_subnational_v1.csv")
+covid <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-dataset/main/data/OxCGRT_compact_subnational_v1.csv")
 #Only USA
 covid <- covid |> filter(CountryName == "United States")
 #Only state-specific
@@ -402,10 +402,45 @@ annual <- annual |> mutate(alt_treatment2 = ifelse(avg_stringency > q75, "Strict
 annual <- annual |> dplyr::select(!avg_stringency)
 
 #Add these values to the data set:
+#df <- df |> left_join(annual, by = c(`_STATE` = "state"))
+```
+
+```{r severity data}
+severity_summary <- covid %>%
+  mutate(year = as.numeric(substr(as.character(Date), 1, 4))) %>%
+  filter(year %in% c(2020, 2021, 2022)) %>%
+  group_by(RegionName) %>%
+  summarize(avg_deaths = mean(ConfirmedDeaths, na.rm = TRUE)) %>%
+  rename(state = RegionName) %>%
+  mutate(state = ifelse(state == "Washington DC", "District of Columbia", state))
+
+# Define Cutoff Points (Quantiles)
+q1 <- quantile(severity_summary$avg_deaths, 0.25)
+q2 <- quantile(severity_summary$avg_deaths, 0.50) # Median
+q3 <- quantile(severity_summary$avg_deaths, 0.75)
+
+# Create the Severity Variables
+severity_summary <- severity_summary %>%
+  mutate(
+    # Main Categorization (High/Low based on Median)
+    covid_severity = ifelse(avg_deaths >= q2, "High", "Low"),
+    # Robustness Check: High (Comparing Top 25% to Bottom 75%)
+    covid_severity_robust_high = ifelse(avg_deaths >= q3, "High", "Low"),
+    # Robustness Check: Low (Comparing Bottom 25% to Top 75%)
+    covid_severity_robust_low = ifelse(avg_deaths <= q1, "High", "Low")
+  )
+
+#Merge Severity into 'annual' dataframe
+annual <- annual %>%
+  left_join(severity_summary, by = "state")
+
 df <- df |> left_join(annual, by = c(`_STATE` = "state"))
 ```
 
 ```{r Missingness Summary}
+#First, remove Guam and Puerto Rico, which are missing in the hand annotations
+df <- df |> filter(`_STATE` != "Guam" & `_STATE` != "Puerto Rico")
+
 # calculate number and percentage of missing values for each variable
 df |> 
   summarise(across(everything(), 
@@ -814,14 +849,14 @@ result10<- df %>%
 print(result10, width = Inf)
 ```
 
-
 ```{r Handle Missing Values}
 # remove observations with any missing values in the variables of interest
 df_cc <- df %>%
   drop_na(MENTHLTH, SEX, `_RACE`, INCOME2, EMPLOY1, GENHLTH, `_AGEG5YR`, `_STATE`, Year, political_leaning, main_treatment)
 
 # check that no missing values remain in the cleaned dataset
-df_cc %>% summarise(across(everything(), ~sum(is.na(.))))
+df_cc %>% summarise(across(everything(), ~sum(is.na(.)))) |> 
+  print(width = Inf)
 
 # get number of observations after removing missing data
 n_complete <- nrow(df_cc)
@@ -848,53 +883,158 @@ merge(before, after, .by = Year) |>
 #some changes, but nothing drastic. All less than 5% different distribution and sufficient counts after to continue forward with the analysis
 ```
 
-```{r DID Model for alt treatment 1 (test run)}
+```{r Data Cleaning for DID Model to Run}
+df_cc <- df_cc |> mutate(INCOME2 = fct_collapse(INCOME2,
+                                                "$0-$25,000" = c("<$10,000",
+                                                                 "$10,000-$15,000",
+                                                                 "$15,000-$20,000",
+                                                                 "$20,000-$25,000"),
+                                                "$25,000-$50,000" =c("$25,000-$35,000",
+                                                                    "$35,000-$50,000"),
+                                                "$50,000+" = c("$50,000-$75,000",
+                                                               "$75,000+")),
+                         EMPLOY1 = fct_collapse(EMPLOY1,
+                                                Employed = c("Employed",
+                                                             "Self-employed"),
+                                                Retired = "Retired",
+                                                Unable = "Unable to work",
+                                                NotWorking = c("Out of work <1 year", 
+                                                               "Out of work 1+ years"),
+                                                Other = c("Student", "Homemaker")),
+                        `_RACE` = fct_collapse(`_RACE`,
+                                               White = "White",
+                                               Black = "Black",
+                                               Hispanic = "Hispanic",
+                                               Other = c("Asian", 
+                                                         "American Indian/Alaskan Native","Other", "Multiracial", "Native Hawaiian/Pacific Islander")),
+                        `_AGEG5YR` = fct_collapse(`_AGEG5YR`,
+                                                  "18-34" = c("18-24","25-29",
+                                                              "30-34"),
+                                                  "35-49" = c("35-39","40-44", 
+                                                              "45-49"),
+                                                  "50-64" = c("50-54","55-59",
+                                                              "60-64"),
+                                                  "65+"   = c("65-69", "70-74",
+                                                              "75-79", "80+"))) |>
+  mutate(id = row_number(),
+         MENTHLTH = as.numeric(MENTHLTH),
+         Year = as.numeric(Year),
+         political_leaning = as.factor(political_leaning)) |>
+  mutate(Year = case_when(Year == 1 ~ 2017,
+                          Year == 2 ~ 2018,
+                          Year == 3 ~ 2019,
+                          Year == 4 ~ 2020,
+                          Year == 5 ~ 2021,
+                          Year == 6 ~ 2022))
+```
 
-# Create variables needed for DID
-df_cc <- df_cc %>%
-  mutate(id=row_number()) %>%
-  mutate(
-    Year_num = as.numeric(Year),
-    mutate(case.when (Year == 1 ~ 2017,
-           Year == 2 ~ 2018, 
-           Year == 3 ~ 2019,
-           Year == 4 ~ 2020,
-           Year == 5 ~ 2021,
-           Year == 6 ~ 2022))  %>%
-    treat_alt1 = ifelse(alt_treatment1 == "Strict", 1, 0),
-    G_alt1 = ifelse(treat_alt1 == 1, 2020, 0),
-  )
+```{r DID Model for Main Treatment}
+#Covariate check among treated vs control
+df_cc |> select(main_treatment, SEX, `_RACE`, INCOME2, EMPLOY1, GENHLTH, 
+                `_AGEG5YR`, political_leaning, covid_severity) |>
+  tbl_summary(by = main_treatment)
+#Relatively equal distribution across strict/not strict for sex, race, income, employment, general health, age, and covid severity.
+#Differences in political leaning, though that makes sense.
 
-
-# Take a random subset to test the model first (faster to run)
-df_test <- df_cc %>% sample_n(100000)
-
-# Run the DID model using Callaway and Sant’Anna method
-did_model_alt1 <- att_gt(
+#Baseline DID analysis
+main_model_data <- df_cc |> mutate(treatment_year = ifelse(main_treatment == "Strict", 2020, 0))
+main_model_base <- att_gt(
   yname = "MENTHLTH",
-  tname = "Year_num",
+  tname = "Year",
   idname = "id",
-  gname = "G_alt1",
-  data = df_test,
-  control_group = "nevertreated",
-  est_method = "dr",
-  xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + political_leaning,
-  panel = FALSE
+  gname = "treatment_year",
+  xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + 
+    political_leaning + covid_severity,
+  panel = FALSE,
+  data = main_model_data)
+summary(main_model_base)
+#No strong evidence that COVID strictness had significant impact on Mental Health
+#Parallel trends assumption violation (p = 0.02669)
+
+#Visualize Results
+ggdid(main_model_base)
+
+#Overall ATT:
+overall <- aggte(main_model_base, type = "simple")
+att <- overall$overall.att       # overall ATT
+se <- overall$overall.se        # standard error
+upper <- att + 1.96 * se
+lower <- att - 1.96 * se
+att #0.0122
+lower #-0.065
+upper #0.0899
+#Overall, not significant difference among treatment and control groups
+
+#Parallel Trends Assumption
+#Null hypothesis for summary: pre-trends are the same (want insignificant value)
+#Violation of parallel trends assumption (p = 0.02669)
+#Note: this visualization is NOT conditioned on covariates, they are raw outputs
+main_model_data |>
+  group_by(Year, main_treatment) |>
+  summarize(avg_mental_health = mean(MENTHLTH, na.rm = TRUE)) |>
+  ggplot(aes(x = Year, y = avg_mental_health, color = main_treatment)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 2019.5, linetype = "dashed") +
+  labs(title = "Mental Health Trends by COVID Policy Strictness",
+       x = "Year",
+       y = "Average Poor Mental Health Days Per Month",
+       color = "COVID Policy") +
+  theme_minimal()
+```
+
+```{r DID Model for alt treatment 1}
+
+# Compare covariates between treatment groups
+df_cc |> 
+  select(alt_treatment1, SEX, `_RACE`, INCOME2, EMPLOY1, GENHLTH, 
+         `_AGEG5YR`, political_leaning, covid_severity) |>
+  tbl_summary(by = alt_treatment1)
+
+# Create treatment timing variable (2020 = treated, 0 = control)
+alt1_model_data <- df_cc |> 
+  mutate(treatment_year = ifelse(alt_treatment1 == "Strict", 2020, 0))
+
+
+# Estimate DID model using Callaway and Sant’Anna method
+alt1_model <- att_gt(
+  yname = "MENTHLTH",                     
+  tname = "Year",                      
+  idname = "id",                          
+  gname = "treatment_year",              
+  xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + 
+    political_leaning + covid_severity,   
+  panel = FALSE,                          
+  data = alt1_model_data                       
 )
 
-# Compute overall average treatment effect
-agg_simple_alt1 <- aggte(did_model_alt1, type = "simple")
+# Display model results
+summary(alt1_model)
 
-# display overall ATT results
-summary(agg_simple_alt1)  
+# Plot group-time treatment effects
+ggdid(alt1_model)
 
-# Compute dynamic (event study) effects over time
-agg_dynamic_alt1 <- aggte(did_model_alt1, type = "dynamic")
+# Calculate overall average treatment effect
+overall_alt1 <- aggte(alt1_model, type = "simple")
+summary(overall_alt1)
 
-# shows treatment effects for each time period relative to treatment
-summary(agg_dynamic_alt1)
+# Estimate event-study (dynamic) treatment effects
+dynamic_alt1 <- aggte(alt1_model, type = "dynamic")
+summary(dynamic_alt1)
 
-# Plot dynamic effects to check parallel trends and treatment effects over time
-ggdid(agg_dynamic_alt1)
-
+# Plot average mental health trends by treatment group
+alt1_model_data |>
+  group_by(Year, alt_treatment1) |>
+  summarize(avg_mental_health = mean(MENTHLTH, na.rm = TRUE)) |>
+  ggplot(aes(x = Year, y = avg_mental_health, color = alt_treatment1)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 2019.5, linetype = "dashed") +
+  labs(title = "Mental Health Trends by COVID Policy Strictness",
+       x = "Year",
+       y = "Average Poor Mental Health Days Per Month",
+       color = "COVID Policy") +
+  theme_minimal()
 ```
+
+
