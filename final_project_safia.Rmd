@@ -26,6 +26,7 @@ library(broom)
 library(did)
 # load gtsummary package
 library(gtsummary)
+# load tidycensus
 library(tidycensus)
 ```
 
@@ -1031,3 +1032,51 @@ alt1_model_data |>
   theme_minimal()
 ```
 
+```{r DID for Alt treatment 2}
+df_cc |> select(alt_treatment2, SEX, `_RACE`, INCOME2, EMPLOY1, GENHLTH, 
+                `_AGEG5YR`, political_leaning, deaths_per_100k) |>
+  tbl_summary(by = alt_treatment2)
+
+#Baseline DID analysis
+alt2_model_data <- df_cc |> mutate(treatment_year = ifelse(alt_treatment2 == "Strict", 2020, 0))
+
+alt2_model_base <- att_gt(
+  yname = "MENTHLTH",
+  tname = "Year",
+  idname = "id",
+  gname = "treatment_year",
+  xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + 
+    political_leaning + deaths_per_100k,
+  panel = FALSE,
+  data = alt2_model_data) 
+
+summary(alt2_model_base)
+#No strong evidence that COVID strictness had significant impact on Mental Health
+#Only significant difference is in 2018
+#Parallel trends assumption violation (p = 0.00435)
+
+#Visualize Results
+ggdid(alt2_model_base)
+
+#Overall ATT:
+overall_alt2 <- aggte(alt2_model_base, type = "simple")
+summary(overall_alt2)
+#Overall, not significant difference among treatment and control groups
+
+#Parallel Trends Assumption
+#Null hypothesis for summary: pre-trends are the same (want insignificant value)
+#Violation of parallel trends assumption (p = 0.02669)
+#Note: this visualization is NOT conditioned on covariates, they are raw outputs
+main_model_data |>
+  group_by(Year, alt_treatment2) |>
+  summarize(avg_mental_health = mean(MENTHLTH, na.rm = TRUE)) |>
+  ggplot(aes(x = Year, y = avg_mental_health, color = alt_treatment2)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 2019.5, linetype = "dashed") +
+  labs(title = "Mental Health Trends by COVID Severity",
+       x = "Year",
+       y = "Average Poor Mental Health Days Per Month",
+       color = "COVID Policy") +
+  theme_minimal()
+```
