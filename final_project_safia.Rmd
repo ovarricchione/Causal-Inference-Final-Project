@@ -22,11 +22,11 @@ library(dplyr)
 library(tidyr) 
 # load broom package 
 library(broom)  
-# load did package for  difference-in-differences analysis (Callaway and Sant’Anna)
+# load did package for difference-in-differences analysis (Callaway and Sant’Anna)
 library(did)
 # load gtsummary package
 library(gtsummary)
-# load tidycensus
+# load tidycensus package
 library(tidycensus)
 ```
 
@@ -978,7 +978,7 @@ old_df |>
   theme_minimal()
 ```
 
-```{r DID Model for alt treatment 1}
+```{r alt1_did_model}
 
 # Compare covariates between treatment groups
 df_cc |> 
@@ -990,7 +990,6 @@ df_cc |>
 alt1_model_data <- df_cc |> 
   mutate(treatment_year = ifelse(alt_treatment1 == "Strict", 2020, 0))
 
-
 # Estimate DID model using Callaway and Sant’Anna method
 alt1_model <- att_gt(
   yname = "MENTHLTH",                     
@@ -1000,7 +999,7 @@ alt1_model <- att_gt(
   xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + 
     political_leaning + deaths_per_100k,   
   panel = FALSE,                          
-  data = alt1_model_data                       
+  data = alt1_model_data                   
 )
 
 # Display model results
@@ -1079,4 +1078,175 @@ main_model_data |>
        y = "Average Poor Mental Health Days Per Month",
        color = "COVID Policy") +
   theme_minimal()
+```
+```{r alt1_heterogeneity}
+
+#####################################################################################################################
+# Males
+#####################################################################################################################
+
+# Filter dataset to include only males
+alt1_male_df <- alt1_model_data |> filter(SEX == "Male")
+
+# Estimate DID model for males
+alt1_male_model <- att_gt(
+  yname = "MENTHLTH",                 
+  tname = "Year",                    
+  idname = "id",                    
+  gname = "treatment_year",          
+  xformla = ~ `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + 
+    political_leaning + deaths_per_100k,  
+  panel = FALSE,                     
+  data = alt1_male_df                
+)
+
+# Display model results
+summary(alt1_male_model)
+
+# Plot group-time treatment effects
+ggdid(alt1_male_model)
+
+# Compute overall average treatment effect for males
+aggte(alt1_male_model, type = "simple") |> summary()
+
+# Plot average mental health trends by treatment group
+alt1_male_df |>
+    group_by(Year, alt_treatment1) |>
+    summarize(avg_mental_health = mean(MENTHLTH, na.rm = TRUE)) |>
+    ggplot(aes(x = Year, y = avg_mental_health, color = alt_treatment1)) +
+    geom_line() +
+    geom_point() +
+    geom_vline(xintercept = 2019.5, linetype = "dashed") +
+    labs(title = "Mental Health Trends by COVID Policy Strictness for Males",
+         x = "Year",
+         y = "Average Poor Mental Health Days Per Month",
+         color = "COVID Policy") +
+    theme_minimal()
+
+#####################################################################################################################
+# Females
+#####################################################################################################################
+
+# Filter dataset to include only females
+alt1_female_df <- alt1_model_data |> filter(SEX == "Female")
+
+# Estimate DID model for females
+alt1_female_model <- att_gt(
+  yname = "MENTHLTH",               
+  tname = "Year",                
+  idname = "id",                    
+  gname = "treatment_year",          
+  xformla = ~ `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + `_AGEG5YR` + 
+    political_leaning + deaths_per_100k,
+  panel = FALSE,                  
+  data = alt1_female_df              
+)
+
+# Display model results
+summary(alt1_female_model)
+
+# Plot group-time treatment effects
+ggdid(alt1_female_model)
+
+# Compute overall average treatment effect for females
+aggte(alt1_female_model, type = "simple") |> summary()
+
+# Plot average mental health trends by treatment group
+alt1_female_df |>
+    group_by(Year, alt_treatment1) |>
+    summarize(avg_mental_health = mean(MENTHLTH, na.rm = TRUE)) |>
+    ggplot(aes(x = Year, y = avg_mental_health, color = alt_treatment1)) +
+    geom_line() +
+    geom_point() +
+    geom_vline(xintercept = 2019.5, linetype = "dashed") +
+    labs(title = "Mental Health Trends by COVID Policy Strictness for Females",
+         x = "Year",
+         y = "Average Poor Mental Health Days Per Month",
+         color = "COVID Policy") +
+    theme_minimal()
+
+#####################################################################################################################
+# Young (18-34)
+#####################################################################################################################
+
+# Filter dataset for ages 18–34
+alt1_young_df <- alt1_model_data  |> filter(`_AGEG5YR` == "18-34")
+
+# Estimate DID model for young adults
+alt1_young_model <- att_gt(
+  yname = "MENTHLTH",                 
+  tname = "Year",                    
+  idname = "id",                    
+  gname = "treatment_year",          
+  xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + 
+    political_leaning + deaths_per_100k,  
+  panel = FALSE,                    
+  data = alt1_young_df               
+)
+
+# Display model results
+summary(alt1_young_model)
+
+# Plot group-time treatment effects
+ggdid(alt1_young_model)
+
+# Compute overall average treatment effect for young adults
+aggte(alt1_young_model, type = "simple") |> summary()
+
+# Plot average mental health trends by treatment group
+alt1_young_df |>
+    group_by(Year, alt_treatment1) |>
+    summarize(avg_mental_health = mean(MENTHLTH, na.rm = TRUE)) |>
+    ggplot(aes(x = Year, y = avg_mental_health, color = alt_treatment1)) +
+    geom_line() +
+    geom_point() +
+    geom_vline(xintercept = 2019.5, linetype = "dashed") +
+    labs(title = "Mental Health Trends by COVID Policy Strictness for Young Adults",
+         x = "Year",
+         y = "Average Poor Mental Health Days Per Month",
+         color = "COVID Policy") +
+    theme_minimal()
+
+#####################################################################################################################
+# Old (35+)
+#####################################################################################################################
+
+# Filter dataset for ages 35 and older
+alt1_old_df <- alt1_model_data |> filter(`_AGEG5YR` != "18-34")
+
+# Estimate DID model for older adults
+alt1_old_model <- att_gt(
+  yname = "MENTHLTH",                 
+  tname = "Year",                    
+  idname = "id",                     
+  gname = "treatment_year",          
+  xformla = ~ SEX + `_RACE` + INCOME2 + EMPLOY1 + GENHLTH + 
+    political_leaning + deaths_per_100k,  
+  panel = FALSE,                     
+  data = alt1_old_df                 
+)
+
+# Display model results
+summary(alt1_old_model)
+
+# Plot group-time treatment effects
+ggdid(alt1_old_model)
+
+# Compute overall average treatment effect for older adults
+aggte(alt1_old_model, type = "simple") |> summary()
+
+
+# Plot average mental health trends by treatment group
+alt1_old_df |>
+    group_by(Year, alt_treatment1) |>
+    summarize(avg_mental_health = mean(MENTHLTH, na.rm = TRUE)) |>
+    ggplot(aes(x = Year, y = avg_mental_health, color = alt_treatment1)) +
+    geom_line() +
+    geom_point() +
+    geom_vline(xintercept = 2019.5, linetype = "dashed") +
+    labs(title = "Mental Health Trends by COVID Policy Strictness for 35+",
+         x = "Year",
+         y = "Average Poor Mental Health Days Per Month",
+         color = "COVID Policy") +
+    theme_minimal()
 ```
